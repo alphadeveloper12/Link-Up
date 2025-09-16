@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mutual NDA</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root { --fg:#111; --muted:#666; --acc:#0b5fff; }
+  body { font-family: ui-serif, Georgia, "Times New Roman", serif; color:var(--fg); margin:32px; line-height:1.45; }
+  h1 { font-size:22px; margin:0 0 8px; }
+  h2 { font-size:16px; margin:18px 0 8px; }
+  p, li { font-size:12.5px; margin:8px 0; }
+  .muted { color:var(--muted); }
+  .box { border:1px solid #ddd; padding:16px; border-radius:8px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  .sig { margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  .line { border-top:1px solid #222; height:0; margin-top:40px; }
+  .small { font-size:11px; }
+  @media print {
+    body { margin:18mm; }
+    a { color:inherit; text-decoration:none; }
+  }
+</style>
+</head>
+<body>
+  <h1>Mutual Non-Disclosure Agreement</h1>
+  <p class="muted small">Effective Date: <strong>{{effective_date}}</strong></p>
+
+  <div class="box grid small">
+    <div>
+      <strong>Party A (Client)</strong><br/>
+      {{party_a_name}}<br/>{{party_a_entity}}<br/>{{party_a_address}}
+    </div>
+    <div>
+      <strong>Party B (Team/Provider)</strong><br/>
+      {{party_b_name}}<br/>{{party_b_entity}}<br/>{{party_b_address}}
+    </div>
+  </div>
+
+  <p><strong>Purpose.</strong> The parties may exchange information to evaluate and/or perform
+  <em>{{purpose}}</em> (the "Purpose").</p>
+
+  <h2>1. Confidential Information</h2>
+  <p>"Confidential Information" means non-public information disclosed by a party ("Discloser") to the other ("Recipient"),
+  in any form, that is identified as confidential or should reasonably be considered confidential. Exclusions: information that
+  (a) becomes public through no fault of Recipient; (b) was known without restriction; (c) is independently developed without use
+  of Discloser's information; or (d) is rightfully received from a third party without duty of confidence.</p>
+
+  <h2>2. Use & Care</h2>
+  <p>Recipient will (i) use Confidential Information only for the Purpose; (ii) not disclose it except to its and its affiliates'
+  employees, contractors, advisors, or prospective investors/lenders who need to know and are bound by duties no less protective
+  than this Agreement ("Representatives"); and (iii) protect it using at least the same degree of care it uses for its own similar
+  information, and no less than reasonable care. Recipient is responsible for its Representatives.</p>
+
+  <h2>3. Compelled Disclosure</h2>
+  <p>If legally compelled, Recipient may disclose after giving prompt notice (where lawful) and cooperating to seek protective treatment.
+  Only what is legally required may be disclosed.</p>
+
+  <h2>4. Ownership; No License</h2>
+  <p>All Confidential Information remains Discloser's property. No license is granted except to use it for the Purpose.</p>
+
+  <h2>5. Term; Survival</h2>
+  <p>This Agreement begins on the Effective Date and continues for {{term_years}} years. Obligations for Confidential Information
+  disclosed during the term survive for {{survival_years}} years; trade secrets are protected as long as they remain trade secrets.</p>
+
+  <h2>6. Return/Destruction</h2>
+  <p>Upon request or termination, Recipient will return or destroy Confidential Information and may retain one archival copy solely for
+  legal/compliance purposes, which remains subject to this Agreement.</p>
+
+  <h2>7. Remedies</h2>
+  <p>Unauthorized use or disclosure may cause irreparable harm; Discloser may seek injunctive relief in addition to other remedies.</p>
+
+  <h2>8. No Warranty</h2>
+  <p>CONFIDENTIAL INFORMATION IS PROVIDED "AS IS".</p>
+
+  <h2>9. Governing Law; Venue</h2>
+  <p>This Agreement is governed by {{governing_law}} law. The parties submit to the exclusive jurisdiction and venue of the courts in
+  {{venue}} (or as otherwise agreed in writing).</p>
+
+  <div class="sig small">
+    <div>
+      <div class="line"></div>
+      <strong>{{party_a_name}}</strong><br/>
+      Name/Title: __________________________<br/>
+      Date: ________________________________
+    </div>
+    <div>
+      <div class="line"></div>
+      <strong>{{party_b_name}}</strong><br/>
+      Name/Title: __________________________<br/>
+      Date: ________________________________
+    </div>
+  </div>
+
+  <p class="muted small">Doc: NDA-short v1.0 · Hash: {{doc_hash}}</p>
+</body>
+</html>
