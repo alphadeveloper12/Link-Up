@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,16 @@ interface NDAModalProps {
   projectData?: {
     name: string;
     clientName: string;
+    clientEntity?: string;
+    clientAddress?: string;
     teamName: string;
+    teamEntity?: string;
+    teamAddress?: string;
+    termYears?: string;
+    survivalYears?: string;
+    governingLaw?: string;
+    venue?: string;
+    teamMembers?: { name: string; role: string; avatar?: string }[]; // <-- added
   };
 }
 
@@ -22,26 +31,41 @@ const NDAModal: React.FC<NDAModalProps> = ({
   isOpen,
   onClose,
   onSigned,
-  projectData = {
-    name: 'Project Development',
-    clientName: 'Client Company',
-    teamName: 'Development Team',
-  },
+  projectData,
 }) => {
   const [step, setStep] = useState<'form' | 'preview' | 'signed'>('form');
-  const [formData] = useState({
-    clientName: projectData.clientName,
+  const [formData, setFormData] = useState({
+    clientName: '',
     clientEntity: '',
     clientAddress: '',
-    teamName: projectData.teamName,
+    teamName: '',
     teamEntity: '',
     teamAddress: '',
-    purpose: projectData.name,
+    purpose: '',
     termYears: '2',
     survivalYears: '5',
     governingLaw: 'Delaware',
     venue: 'Delaware',
   });
+
+  // Update formData when projectData changes
+  useEffect(() => {
+    if (projectData) {
+      setFormData({
+        clientName: projectData.clientName || '',
+        clientEntity: projectData.clientEntity || '',
+        clientAddress: projectData.clientAddress || '',
+        teamName: projectData.teamName || '',
+        teamEntity: projectData.teamEntity || '',
+        teamAddress: projectData.teamAddress || '',
+        purpose: projectData.name || '',
+        termYears: projectData.termYears || '2',
+        survivalYears: projectData.survivalYears || '5',
+        governingLaw: projectData.governingLaw || 'Delaware',
+        venue: projectData.venue || 'Delaware',
+      });
+    }
+  }, [projectData]);
 
   const populateNDA = () => {
     const today = new Date().toLocaleDateString();

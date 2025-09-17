@@ -105,7 +105,10 @@ const TeamMatch: React.FC = () => {
                   </div>
                   <Button
                     className="mt-4"
-                    onClick={() => navigate(`/hire/${team.id}`)}
+                      onClick={() => 
+                        navigate('/hire/', { state: { projectId: new URLSearchParams(location.search).get('projectId'), teamId: team.id } })
+                      }
+
                   >
                     Select Team
                   </Button>

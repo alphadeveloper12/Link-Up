@@ -3,10 +3,16 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import OnboardingChecklist from '@/components/OnboardingChecklist';
 
 export default function HireChecklist() {
-  const { teamId } = useParams();
   const navigate = useNavigate();
-  const q = new URLSearchParams(useLocation().search);
-  const projectName = q.get('project') || 'New Project';
+  const location = useLocation();
+  const { projectId, teamId } = location.state || {};
+
+  console.log('Project ID:', projectId);
+  console.log('Team ID:', teamId);
+
+  if (!projectId || !teamId) {
+    return <div className="p-6 text-red-500">Missing project or team data!</div>;
+  }
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -15,7 +21,7 @@ export default function HireChecklist() {
         Complete these items to kick off with your selected team.
       </p>
 
-      <OnboardingChecklist />
+      <OnboardingChecklist projectId={projectId} teamId={teamId} />
 
       <div className="mt-8 flex justify-end">
         <button

@@ -24,7 +24,8 @@ export const TeamMemberUploader: React.FC<TeamMemberUploaderProps> = ({
 }) => {
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]); // Public URLs
+  const [uploadedFileObjects, setUploadedFileObjects] = useState<File[]>([]); // Original File objects
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -36,6 +37,7 @@ export const TeamMemberUploader: React.FC<TeamMemberUploaderProps> = ({
       const fileName = `${Date.now()}-${memberIndex}.${fileExt}`;
       const filePath = `team-member-files/${fileName}`;
 
+      // Upload to Supabase storage
       const { error: uploadError } = await supabase.storage
         .from('project-files')
         .upload(filePath, file);
@@ -46,8 +48,10 @@ export const TeamMemberUploader: React.FC<TeamMemberUploaderProps> = ({
         .from('project-files')
         .getPublicUrl(filePath);
 
+      // Save both File object and public URL
       setUploadedFiles(prev => [...prev, publicUrl]);
-      
+      setUploadedFileObjects(prev => [...prev, file]);
+
       toast({
         title: "File uploaded successfully",
         description: `${file.name} has been uploaded for ${member.name || `Member ${memberIndex + 1}`}`
@@ -65,76 +69,74 @@ export const TeamMemberUploader: React.FC<TeamMemberUploaderProps> = ({
     }
   };
 
-const generateProfile = async () => {
-  if (!member.name && uploadedFiles.length === 0) {
-    toast({
-      title: "Missing information",
-      description: "Please provide a name or upload files to generate profile",
-      variant: "destructive"
-    });
-    return;
-  }
-
-  setGenerating(true);
-  try {
-    // Extract text from each uploaded file
-    let combinedText = '';
-    for (const url of uploadedFiles) {
-      try {
-        const res = await fetch(url);
-        const blob = await res.blob();
-        const file = new File([blob], 'temp.pdf', { type: 'application/pdf' });
-
-        // Use react-pdftotext (or another PDF text extractor)
-        const text = await PdfToText(file);
-        combinedText += text + '\n\n';
-      } catch (err) {
-        console.error('PDF extraction failed for', url, err);
-      }
+  const generateProfile = async () => {
+    if (!member.name && uploadedFileObjects.length === 0) {
+      toast({
+        title: "Missing information",
+        description: "Please provide a name or upload files to generate profile",
+        variant: "destructive"
+      });
+      return;
     }
 
-    // Call AI function with extracted text (not URLs)
-    const { data, error } = await supabase.functions.invoke('ai-profile-assistant', {
-      body: {
-        type: 'generate_member_profile',
-        memberData: {
-          name: member.name,
-          role: member.role,
-          uploadedFiles: combinedText.trim() // <-- now a single string
+    setGenerating(true);
+    try {
+      let combinedText = '';
+
+      // Extract text from uploaded PDF files
+      for (const file of uploadedFileObjects) {
+        try {
+          const text = await PdfToText(file);
+          console.log('Extracted text from file:', file.name, text);
+          combinedText += text + '\n\n';
+        } catch (err) {
+          console.error('PDF extraction failed for', file.name, err);
         }
       }
-    });
 
-    if (error) throw error;
+      console.log('Combined extracted text:', combinedText);
 
-    if (data?.profile) {
-      onMemberUpdate(memberIndex, {
-        ...member,
-        bio: data.profile.bio || member.bio,
-        role: data.profile.role || member.role,
-        skills: data.profile.skills || [],
-        experience: data.profile.experience || ''
+      // Call AI function with extracted text
+      const { data, error } = await supabase.functions.invoke('ai-profile-assistant', {
+        body: {
+          type: 'generate_member_profile',
+          memberData: {
+            name: member.name,
+            role: member.role,
+            uploadedFiles: combinedText.trim()
+          }
+        }
       });
 
+      if (error) throw error;
+
+      if (data?.profile) {
+        onMemberUpdate(memberIndex, {
+          ...member,
+          name: data.profile.name || member.name,
+          bio: data.profile.bio || member.bio,
+          role: data.profile.role || member.role,
+          skills: data.profile.skills || [],
+          experience: data.profile.experience || ''
+        });
+
+        toast({
+          title: "Profile generated!",
+          description: "AI has enhanced the member profile based on extracted CV text"
+        });
+      }
+
+    } catch (error: any) {
+      console.error('Generation error:', error);
       toast({
-        title: "Profile generated!",
-        description: "AI has enhanced the member profile based on extracted CV text"
+        title: "Generation failed",
+        description: error.message || "Please try again",
+        variant: "destructive"
       });
+    } finally {
+      setGenerating(false);
     }
-
-  } catch (error) {
-    console.error('Generation error:', error);
-    toast({
-      title: "Generation failed",
-      description: "Please try again",
-      variant: "destructive"
-    });
-  } finally {
-    setGenerating(false);
-  }
-};
-
-
+  };
 
   return (
     <Card className="border-l-4 border-l-blue-500">

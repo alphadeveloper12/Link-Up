@@ -123,7 +123,7 @@ const App = () => {
               <Route path="/team-dashboard" element={<TeamDashboard />} />
               <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
               <Route path="/admin/email-console" element={<AdminRoute><EmailConsole /></AdminRoute>} />
-              <Route path="/hire/:teamId" element={<HireChecklist />} />
+              <Route path="/hire/" element={<HireChecklist />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

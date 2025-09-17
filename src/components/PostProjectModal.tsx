@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, FileText, Sparkles, Upload, Calendar, DollarSign } from 'lucide-react';
+import React, { useState, useEffect, KeyboardEvent } from 'react';
+import { X, FileText, Sparkles, Upload, Calendar, DollarSign, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,6 +11,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/components/ui/use-toast';
 import { SIGNUP_ROUTE, POST_PROJECT_ROUTE, DRAFT_PROJECT_KEY, addParams } from '@/utils/auth-helpers';
+import PdfToText from 'react-pdftotext';
+
 
 interface PostProjectModalProps {
   isOpen: boolean;
@@ -25,21 +27,26 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
     description: '',
     industry: '',
     customIndustry: '',
-    skills: '',
     timeline: '',
     budget: '',
     files: null as FileList | null
   });
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCustomDateTime, setShowCustomDateTime] = useState(false);
   const [error, setError] = useState('');
 
-  // 🟢 added states
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [showGenerateButton, setShowGenerateButton] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [uploadedFileObjects, setUploadedFileObjects] = useState<File[]>([]);
 
-  // Restore draft data on mount
+
+
+
   useEffect(() => {
     if (isOpen && isAuthenticated) {
       const draftStr = sessionStorage.getItem(DRAFT_PROJECT_KEY);
@@ -47,6 +54,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
         try {
           const draft = JSON.parse(draftStr);
           setFormData(prev => ({ ...prev, ...draft, files: null }));
+          if (draft.skills) setSkills(draft.skills.split(','));
         } catch (e) {
           console.error('Failed to parse draft data:', e);
         }
@@ -54,42 +62,47 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
     }
   }, [isOpen, isAuthenticated]);
 
-  const collectProjectDraft = () => {
-    return {
-      name: formData.name,
-      description: formData.description,
-      industry: formData.industry,
-      customIndustry: formData.customIndustry,
-      skills: formData.skills,
-      timeline: formData.timeline,
-      budget: formData.budget
-    };
-  };
+  const collectProjectDraft = () => ({
+    name: formData.name,
+    description: formData.description,
+    industry: formData.industry,
+    customIndustry: formData.customIndustry,
+    skills: skills.join(','),
+    timeline: formData.timeline,
+    budget: formData.budget
+  });
 
   const validateForm = () => {
     if (!formData.name.trim()) return 'Project name is required';
     if (!formData.description.trim()) return 'Project description is required';
-    if (!formData.skills.trim()) return 'Skills required field is required';
+    if (!skills.length) return 'Please add at least one skill';
     return null;
+  };
+
+  const isFormComplete = () => {
+    return (
+      formData.name.trim() &&
+      formData.description.trim() &&
+      skills.length > 0 &&
+      formData.industry.trim() &&
+      (formData.industry !== 'other' || formData.customIndustry.trim()) &&
+      formData.timeline.trim() &&
+      formData.budget.trim() &&
+      formData.files && formData.files.length > 0
+    );
   };
 
   const createProject = async ({
     title,
     description,
-    skills,
+    skillsArray,
   }: {
     title: string;
     description?: string;
-    skills?: string[];
+    skillsArray?: string[];
   }) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Must be signed in');
-
-    const skillsArray = Array.isArray(skills)
-      ? skills
-      : typeof skills === 'string'
-        ? skills.split(',').map(s => s.trim()).filter(Boolean)
-        : [];
 
     const { data, error } = await supabase.from('projects').insert({
       title,
@@ -102,7 +115,6 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
     return data;
   };
 
-  // Helper to upload files to Supabase Storage
   const uploadFiles = async (projectId: string, files: FileList) => {
     const uploaded: string[] = [];
     for (const file of Array.from(files)) {
@@ -119,7 +131,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
 
       uploaded.push(publicData.publicUrl);
     }
-    setUploadedUrls(uploaded); // 🟢 store uploaded URLs
+    setUploadedUrls(uploaded);
     return uploaded;
   };
 
@@ -133,7 +145,11 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
       return;
     }
 
-    // Check authentication before proceeding
+    if (!isFormComplete()) {
+      setError('Please fill in all fields and upload at least one file.');
+      return;
+    }
+
     if (!isAuthenticated && !loading) {
       const draft = collectProjectDraft();
       sessionStorage.setItem(DRAFT_PROJECT_KEY, JSON.stringify(draft));
@@ -149,30 +165,20 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
     setIsSubmitting(true);
 
     try {
-      const skillsArray = formData.skills
-        .split(',')
-        .map(skill => skill.trim())
-        .filter(Boolean);
-
-      // 1. create the project row
       const project = await createProject({
         title: formData.name,
         description: formData.description,
-        skills: skillsArray
+        skillsArray: skills
       });
 
-      // 2. upload files if any
       if (formData.files && formData.files.length > 0) {
         const urls = await uploadFiles(project.id, formData.files);
-
-        // 3. update project row with file URLs (if you added column)
         await supabase
           .from('projects')
           .update({ file_urls: urls })
           .eq('id', project.id);
       }
 
-      // Clear draft on successful submission
       sessionStorage.removeItem(DRAFT_PROJECT_KEY);
 
       setShowSuccess(true);
@@ -184,7 +190,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
       setTimeout(() => {
         setShowSuccess(false);
         onClose();
-        navigate('/team-match');
+        navigate(`/team-match?projectId=${project.id}`);
       }, 2000);
     } catch (err) {
       setError('Failed to post project. Please try again.');
@@ -194,16 +200,155 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
     }
   };
 
-  // 🟢 handle file input and show names
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    setFormData({ ...formData, files });
-    if (files) {
-      const names = Array.from(files).map(f => f.name);
-      setSelectedFiles(names);
-    } else {
-      setSelectedFiles([]);
+const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+
+  const fileArray = Array.from(files);
+  setSelectedFiles(fileArray.map(f => f.name));
+
+  // 🔹 Save actual file objects for later use in generateProject
+  setUploadedFileObjects(fileArray);
+
+  const uploadedUrls: string[] = [];
+
+  for (const file of fileArray) {
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const path = `project-files/${Date.now()}-${sanitizedName}`;
+
+    try {
+      const { error } = await supabase.storage.from('project-files').upload(path, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+      if (error) throw error;
+
+      const { data: publicData } = supabase.storage.from('project-files').getPublicUrl(path);
+      uploadedUrls.push(publicData.publicUrl);
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Upload failed', description: `Could not upload ${file.name}`, variant: 'destructive' });
     }
+  }
+
+  // Save uploaded URLs to state and formData
+  setUploadedUrls(uploadedUrls);
+  setFormData(prev => ({ ...prev, files: files }));
+
+  toast({ title: 'Files uploaded', description: 'All files uploaded successfully!' });
+
+  // ✅ Show Generate AI Project button
+  if (uploadedUrls.length > 0) {
+    setShowGenerateButton(true);
+  }
+};
+
+const generateProject = async () => {
+  if (uploadedFileObjects.length === 0) {
+    toast({
+      title: "Missing information",
+      description: "Please upload at least one PDF to generate the project details",
+      variant: "destructive"
+    });
+    return;
+  }
+
+  setGenerating(true);
+  try {
+    let combinedText = '';
+
+    // Extract text from all uploaded PDF files
+    for (const file of uploadedFileObjects) {
+      try {
+        const text = await PdfToText(file);
+        combinedText += text + '\n\n';
+      } catch (err) {
+        console.error('PDF extraction failed for', file.name, err);
+      }
+    }
+
+    // Prepare the full payload from your input fields
+    const payload = {
+      type: 'generate_project',
+      projectData: {
+        name: formData.name,
+        description: formData.description,
+        industry: formData.industry === 'other' ? formData.customIndustry : formData.industry,
+        skills: skills, // array of skills
+        timeline: formData.timeline,
+        budget: formData.budget,
+        uploadedFiles: combinedText.trim(), // extracted text from files
+      }
+    };
+
+    console.log('Sending payload:', payload);
+
+    // Call your Supabase Edge Function with full payload
+    const { data, error } = await supabase.functions.invoke('ai-profile-assistant', {
+      body: {
+        type: 'generate_project',
+        projectData: {
+          name: formData.name,
+          description: formData.description,
+          industry: formData.industry === 'other' ? formData.customIndustry : formData.industry,
+          skills: skills, // array of skills
+          timeline: formData.timeline,
+          budget: formData.budget,
+          uploadedFiles: combinedText.trim(), // extracted text from files
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    if (data?.project) {
+      // auto-fill your form fields with AI response if you want
+      setFormData(prev => ({
+        ...prev,
+        name: data.project.title || prev.name,
+        description: data.project.description || prev.description,
+        // we don’t store skills in formData so update separately
+      }));
+      if (data.project.skills && Array.isArray(data.project.skills)) {
+        setSkills(data.project.skills);
+      }
+
+      toast({
+        title: "Project generated!",
+        description: "AI has generated the project details based on your inputs and PDFs"
+      });
+    }
+
+  } catch (error: any) {
+    console.error('Generation error:', error);
+    toast({
+      title: "Generation failed",
+      description: error.message || "Please try again",
+      variant: "destructive"
+    });
+  } finally {
+    setGenerating(false);
+  }
+};
+
+
+
+
+
+
+  const handleSkillKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const skill = skillInput.trim();
+      if (skill && !skills.includes(skill)) {
+        setSkills([...skills, skill]);
+      }
+      setSkillInput('');
+    }
+  };
+
+  const removeSkill = (skillToRemove: string) => {
+    setSkills(skills.filter(s => s !== skillToRemove));
   };
 
   if (!isOpen) return null;
@@ -229,33 +374,31 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Project name */}
+            {/* Project Name */}
             <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">Project Name</label>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Project Name *</label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Mobile App Development"
                 className="h-12 rounded-xl border-2 border-purple-100"
-                required
               />
             </div>
 
-            {/* Description */}
+            {/* Project Description */}
             <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">Project Description</label>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Project Description *</label>
               <Textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Describe your project goals and requirements..."
                 className="min-h-24 rounded-xl border-2 border-purple-100 resize-none"
-                required
               />
             </div>
 
             {/* Industry */}
             <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">Industry</label>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Industry *</label>
               <Select value={formData.industry} onValueChange={(value) => setFormData({ ...formData, industry: value })}>
                 <SelectTrigger className="h-12 rounded-xl border-2 border-purple-100">
                   <SelectValue placeholder="Select your industry" />
@@ -286,30 +429,35 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
 
             {/* Skills */}
             <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">Skills Required</label>
-              <Input
-                value={formData.skills}
-                onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
-                placeholder="e.g., React, Node.js, UI/UX Design"
-                className="h-12 rounded-xl border-2 border-purple-100"
-                required
-              />
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Skills Required *</label>
+              <div className="flex flex-wrap gap-2 border-2 border-purple-100 rounded-xl p-2 min-h-[50px]">
+                {skills.map((skill, idx) => (
+                  <div key={idx} className="flex items-center gap-1 bg-purple-200 text-purple-900 px-2 py-1 rounded-full">
+                    {skill}
+                    <X className="w-3 h-3 cursor-pointer" onClick={() => removeSkill(skill)} />
+                  </div>
+                ))}
+                <Input
+                  value={skillInput}
+                  onChange={(e) => setSkillInput(e.target.value)}
+                  onKeyDown={handleSkillKeyDown}
+                  placeholder="Type a skill and press Enter"
+                  className="border-none min-w-[120px] focus:ring-0 focus:outline-none h-8"
+                />
+              </div>
             </div>
 
-            {/* Timeline and budget */}
+            {/* Timeline & Budget */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  <Calendar className="w-4 h-4 inline mr-1" />Timeline
+                  <Calendar className="w-4 h-4 inline mr-1" />Timeline *
                 </label>
                 <Select
                   value={isCustomTimeline ? 'custom' : formData.timeline}
                   onValueChange={(value) => {
-                    if (value === 'custom') {
-                      setShowCustomDateTime(true);
-                    } else {
-                      setFormData({ ...formData, timeline: value });
-                    }
+                    if (value === 'custom') setShowCustomDateTime(true);
+                    else setFormData({ ...formData, timeline: value });
                   }}
                 >
                   <SelectTrigger className="h-12 rounded-xl border-2 border-purple-100">
@@ -328,7 +476,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
 
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  <DollarSign className="w-4 h-4 inline mr-1" />Budget (Optional)
+                  <DollarSign className="w-4 h-4 inline mr-1" />Budget *
                 </label>
                 <Input
                   value={formData.budget}
@@ -339,11 +487,35 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
               </div>
             </div>
 
-            {/* File upload */}
+            {/* File Upload */}
             <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">
-                <Upload className="w-4 h-4 inline mr-1" />Project Brief/Specs (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-gray-900">
+                  <Upload className="w-4 h-4 inline mr-1" />
+                  Project Brief/Specs *
+                </label>
+
+                {showGenerateButton && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={generateProject}
+                    disabled={generating}
+                    className="ml-4"
+                  >
+                    {generating ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 mr-2" />
+                    )}
+                    AI Generate Project
+                  </Button>
+                )}
+              </div>
+
+              
+
               <div className="relative">
                 <input
                   type="file"
@@ -357,7 +529,6 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
                 </div>
               </div>
 
-              {/* 🟢 show selected file names */}
               {selectedFiles.length > 0 && (
                 <ul className="mt-2 space-y-1 text-sm text-gray-600">
                   {selectedFiles.map((name, idx) => (
@@ -369,8 +540,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
                 </ul>
               )}
 
-              {/* 🟢 show uploaded file URLs */}
-              {uploadedUrls.length > 0 && (
+              {/* {uploadedUrls.length > 0 && (
                 <ul className="mt-2 space-y-1 text-sm text-green-600">
                   {uploadedUrls.map((url, idx) => (
                     <li key={idx} className="truncate">
@@ -381,7 +551,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
                     </li>
                   ))}
                 </ul>
-              )}
+              )} */}
             </div>
 
             {error && (
@@ -396,7 +566,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isFormComplete()}
                 className="flex-1 h-12 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 disabled:opacity-50"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
@@ -418,9 +588,7 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
       <CustomDateTimeModal
         isOpen={showCustomDateTime}
         onClose={() => setShowCustomDateTime(false)}
-        onSave={(dateTime) => {
-          setFormData({ ...formData, timeline: dateTime });
-        }}
+        onSave={(dateTime) => setFormData({ ...formData, timeline: dateTime })}
       />
     </div>
   );
