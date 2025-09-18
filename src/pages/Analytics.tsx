@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 const Analytics: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation />
+      {/* <Navigation /> */}
       <div className="pt-20">
         <div className="container mx-auto px-4 py-8">
           <Tabs defaultValue="dashboard" className="space-y-6">

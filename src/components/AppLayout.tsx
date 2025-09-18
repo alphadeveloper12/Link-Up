@@ -33,9 +33,9 @@ const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen">
-      <div className="fixed top-4 right-4 z-50">
+      {/* <div className="fixed top-4 right-4 z-50">
         <NotificationSystem />
-      </div>
+      </div> */}
       {renderView()}
       {/* Floating AI Chatbot - available on all pages */}
       <ChatBot isFloating={true} />

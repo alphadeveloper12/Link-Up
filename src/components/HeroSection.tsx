@@ -9,7 +9,7 @@ const HeroSection: React.FC = () => {
   const { toast } = useToast();
 
   const handleGetEarlyAccess = () => {
-    const authUrl = buildAuthUrl(SIGNUP_ROUTE, '/start');
+    const authUrl = buildAuthUrl('/start');
     toast({
       title: 'Going to auth',
       description: `Going to auth: ${authUrl}`,
