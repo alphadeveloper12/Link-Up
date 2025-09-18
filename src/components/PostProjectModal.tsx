@@ -13,7 +13,6 @@ import { toast } from '@/components/ui/use-toast';
 import { SIGNUP_ROUTE, POST_PROJECT_ROUTE, DRAFT_PROJECT_KEY, addParams } from '@/utils/auth-helpers';
 import PdfToText from 'react-pdftotext';
 
-
 interface PostProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -43,9 +42,6 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
   const [showGenerateButton, setShowGenerateButton] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [uploadedFileObjects, setUploadedFileObjects] = useState<File[]>([]);
-
-
-
 
   useEffect(() => {
     if (isOpen && isAuthenticated) {
@@ -179,6 +175,43 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
           .eq('id', project.id);
       }
 
+      /** 🔹 ADD MILESTONES HERE */
+      try {
+  // 🔹 total budget as number
+  const budgetValue =
+    parseFloat(formData.budget.replace(/[^0-9.]/g, '')) || 0;
+
+  // 🔹 the three percentages you want to apply
+  const percentages = [30, 40, 30];
+
+  // 🔹 build milestone objects
+  const milestones = percentages.map((pct, idx) => {
+    const amount = budgetValue * (pct / 100);
+    return {
+      project_id: project.id,
+      order_index: idx + 1,
+      title: `Milestone ${idx + 1}`,
+      description: `Payment part ${idx + 1} - ${pct}% of budget ($${amount.toFixed(
+        2
+      )})`,
+      percentage: pct, // 🔹 send percentage column
+      amount: amount.toFixed(2), // 🔹 send amount column
+      due_date: null // you can compute due dates if you want
+    };
+  });
+
+  // 🔹 insert them into Supabase
+  const { error: milestoneError } = await supabase
+    .from('project_milestones')
+    .insert(milestones);
+
+  if (milestoneError) console.error('Milestone insert error', milestoneError);
+} catch (mErr) {
+  console.error('Milestone creation failed', mErr);
+}
+
+      /** 🔹 END MILESTONES */
+
       sessionStorage.removeItem(DRAFT_PROJECT_KEY);
 
       setShowSuccess(true);
@@ -200,141 +233,117 @@ const PostProjectModal: React.FC<PostProjectModalProps> = ({ isOpen, onClose }) 
     }
   };
 
-const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const files = e.target.files;
-  if (!files || files.length === 0) return;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-  const fileArray = Array.from(files);
-  setSelectedFiles(fileArray.map(f => f.name));
+    const fileArray = Array.from(files);
+    setSelectedFiles(fileArray.map(f => f.name));
 
-  // 🔹 Save actual file objects for later use in generateProject
-  setUploadedFileObjects(fileArray);
+    // 🔹 Save actual file objects for later use in generateProject
+    setUploadedFileObjects(fileArray);
 
-  const uploadedUrls: string[] = [];
+    const uploadedUrls: string[] = [];
 
-  for (const file of fileArray) {
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const path = `project-files/${Date.now()}-${sanitizedName}`;
+    for (const file of fileArray) {
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const path = `project-files/${Date.now()}-${sanitizedName}`;
 
-    try {
-      const { error } = await supabase.storage.from('project-files').upload(path, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-      if (error) throw error;
-
-      const { data: publicData } = supabase.storage.from('project-files').getPublicUrl(path);
-      uploadedUrls.push(publicData.publicUrl);
-    } catch (err) {
-      console.error(err);
-      toast({ title: 'Upload failed', description: `Could not upload ${file.name}`, variant: 'destructive' });
-    }
-  }
-
-  // Save uploaded URLs to state and formData
-  setUploadedUrls(uploadedUrls);
-  setFormData(prev => ({ ...prev, files: files }));
-
-  toast({ title: 'Files uploaded', description: 'All files uploaded successfully!' });
-
-  // ✅ Show Generate AI Project button
-  if (uploadedUrls.length > 0) {
-    setShowGenerateButton(true);
-  }
-};
-
-const generateProject = async () => {
-  if (uploadedFileObjects.length === 0) {
-    toast({
-      title: "Missing information",
-      description: "Please upload at least one PDF to generate the project details",
-      variant: "destructive"
-    });
-    return;
-  }
-
-  setGenerating(true);
-  try {
-    let combinedText = '';
-
-    // Extract text from all uploaded PDF files
-    for (const file of uploadedFileObjects) {
       try {
-        const text = await PdfToText(file);
-        combinedText += text + '\n\n';
+        const { error } = await supabase.storage.from('project-files').upload(path, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+        if (error) throw error;
+
+        const { data: publicData } = supabase.storage.from('project-files').getPublicUrl(path);
+        uploadedUrls.push(publicData.publicUrl);
       } catch (err) {
-        console.error('PDF extraction failed for', file.name, err);
+        console.error(err);
+        toast({ title: 'Upload failed', description: `Could not upload ${file.name}`, variant: 'destructive' });
       }
     }
 
-    // Prepare the full payload from your input fields
-    const payload = {
-      type: 'generate_project',
-      projectData: {
-        name: formData.name,
-        description: formData.description,
-        industry: formData.industry === 'other' ? formData.customIndustry : formData.industry,
-        skills: skills, // array of skills
-        timeline: formData.timeline,
-        budget: formData.budget,
-        uploadedFiles: combinedText.trim(), // extracted text from files
-      }
-    };
+    // Save uploaded URLs to state and formData
+    setUploadedUrls(uploadedUrls);
+    setFormData(prev => ({ ...prev, files: files }));
 
-    console.log('Sending payload:', payload);
+    toast({ title: 'Files uploaded', description: 'All files uploaded successfully!' });
 
-    // Call your Supabase Edge Function with full payload
-    const { data, error } = await supabase.functions.invoke('ai-profile-assistant', {
-      body: {
-        type: 'generate_project',
-        projectData: {
-          name: formData.name,
-          description: formData.description,
-          industry: formData.industry === 'other' ? formData.customIndustry : formData.industry,
-          skills: skills, // array of skills
-          timeline: formData.timeline,
-          budget: formData.budget,
-          uploadedFiles: combinedText.trim(), // extracted text from files
+    // ✅ Show Generate AI Project button
+    if (uploadedUrls.length > 0) {
+      setShowGenerateButton(true);
+    }
+  };
+
+  const generateProject = async () => {
+    if (uploadedFileObjects.length === 0) {
+      toast({
+        title: "Missing information",
+        description: "Please upload at least one PDF to generate the project details",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      let combinedText = '';
+
+      // Extract text from all uploaded PDF files
+      for (const file of uploadedFileObjects) {
+        try {
+          const text = await PdfToText(file);
+          combinedText += text + '\n\n';
+        } catch (err) {
+          console.error('PDF extraction failed for', file.name, err);
         }
       }
-    });
 
-    if (error) throw error;
+      const { data, error } = await supabase.functions.invoke('ai-profile-assistant', {
+        body: {
+          type: 'generate_project',
+          projectData: {
+            name: formData.name,
+            description: formData.description,
+            industry: formData.industry === 'other' ? formData.customIndustry : formData.industry,
+            skills: skills,
+            timeline: formData.timeline,
+            budget: formData.budget,
+            uploadedFiles: combinedText.trim(),
+          }
+        }
+      });
 
-    if (data?.project) {
-      // auto-fill your form fields with AI response if you want
-      setFormData(prev => ({
-        ...prev,
-        name: data.project.title || prev.name,
-        description: data.project.description || prev.description,
-        // we don’t store skills in formData so update separately
-      }));
-      if (data.project.skills && Array.isArray(data.project.skills)) {
-        setSkills(data.project.skills);
+      if (error) throw error;
+
+      if (data?.project) {
+        setFormData(prev => ({
+          ...prev,
+          name: data.project.title || prev.name,
+          description: data.project.description || prev.description,
+        }));
+        if (data.project.skills && Array.isArray(data.project.skills)) {
+          setSkills(data.project.skills);
+        }
+
+        toast({
+          title: "Project generated!",
+          description: "AI has generated the project details based on your inputs and PDFs"
+        });
       }
 
+    } catch (error: any) {
+      console.error('Generation error:', error);
       toast({
-        title: "Project generated!",
-        description: "AI has generated the project details based on your inputs and PDFs"
+        title: "Generation failed",
+        description: error.message || "Please try again",
+        variant: "destructive"
       });
+    } finally {
+      setGenerating(false);
     }
-
-  } catch (error: any) {
-    console.error('Generation error:', error);
-    toast({
-      title: "Generation failed",
-      description: error.message || "Please try again",
-      variant: "destructive"
-    });
-  } finally {
-    setGenerating(false);
-  }
-};
-
-
-
-
-
+  };
 
   const handleSkillKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
@@ -356,6 +365,7 @@ const generateProject = async () => {
   const isCustomTimeline =
     formData.timeline &&
     !['urgent', '1week', '1month', 'custom'].includes(formData.timeline);
+
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">

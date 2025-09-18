@@ -33,6 +33,7 @@ interface Milestone {
   id: string;
   name: string;
   percentage: number;
+  amount: number; // 👈 add this
   description: string;
   archived?: boolean;
   approved?: boolean;
@@ -110,32 +111,10 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
     }
   ]);
 
-  const [milestones, setMilestones] = useState<Milestone[]>([
-    {
-      id: 'm1',
-      name: 'Milestone 1',
-      percentage: 20,
-      description: 'Initial project setup and requirements gathering'
-    },
-    {
-      id: 'm2',
-      name: 'Milestone 2',
-      percentage: 30,
-      description: 'UI/UX design and prototypes'
-    },
-    {
-      id: 'm3',
-      name: 'Milestone 3',
-      percentage: 30,
-      description: 'Development of core features'
-    },
-    {
-      id: 'm4',
-      name: 'Milestone 4',
-      percentage: 20,
-      description: 'Testing, bug fixes, and deployment'
-    }
-  ]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [selectedMilestone, setSelectedMilestone] = useState<Milestone | null>(
+    null
+  );
 
   const [showConfetti, setShowConfetti] = useState(false);
   const [wasCompleted, setWasCompleted] = useState(false);
@@ -190,6 +169,38 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
     fetchData();
   }, [projectId, teamId]);
 
+  // Fetch project milestones from Supabase
+  useEffect(() => {
+    const fetchMilestones = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('project_milestones')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('order_index', { ascending: true });
+
+        if (error) throw error;
+
+        const mapped: Milestone[] = data.map((m: any) => ({
+          id: m.id,
+          name: m.title,
+          percentage: m.percentage || 0,
+          description: m.description,
+          archived: m.status === 'archived',
+          approved: m.status === 'approved',
+          paymentReleased: m.payment_released,
+          amount: parseFloat(m.amount) || 0 // 👈 bring the amount across too
+        }));
+
+        setMilestones(mapped);
+      } catch (err) {
+        console.error('Error fetching milestones', err);
+      }
+    };
+
+    fetchMilestones();
+  }, [projectId]);
+
   const signIn = async () => {
     if (!gapiReady) {
       alert('Google API not initialised yet');
@@ -237,9 +248,14 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
   };
 
   const handlePaymentSuccess = () => {
+    // Payment success for project setup or milestone
     setItems(items.map(item =>
       item.id === '2' ? { ...item, completed: true } : item
     ));
+    if (selectedMilestone) {
+      approveMilestone(selectedMilestone.id);
+      setSelectedMilestone(null);
+    }
   };
 
   const handleNDASigned = () => {
@@ -260,16 +276,39 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
     }
   }, [isFullyComplete, wasCompleted]);
 
-  const archiveMilestone = (id: string) => {
-    setMilestones(milestones.map(ms =>
-      ms.id === id ? { ...ms, archived: true } : ms
-    ));
+  const archiveMilestone = async (id: string) => {
+    try {
+      await supabase
+        .from('project_milestones')
+        .update({ status: 'archived' })
+        .eq('id', id);
+
+      setMilestones(milestones.map(ms =>
+        ms.id === id ? { ...ms, archived: true } : ms
+      ));
+    } catch (err) {
+      console.error('Failed to archive milestone', err);
+    }
   };
 
-  const approveMilestone = (id: string) => {
-    setMilestones(milestones.map(ms =>
-      ms.id === id ? { ...ms, approved: true, paymentReleased: true } : ms
-    ));
+  const approveMilestone = async (id: string) => {
+    try {
+      await supabase
+        .from('project_milestones')
+        .update({ status: 'approved', payment_released: true })
+        .eq('id', id);
+
+      setMilestones(milestones.map(ms =>
+        ms.id === id ? { ...ms, approved: true, paymentReleased: true } : ms
+      ));
+    } catch (err) {
+      console.error('Failed to approve milestone', err);
+    }
+  };
+
+  const handlePaymentForMilestone = (ms: Milestone) => {
+    setSelectedMilestone(ms);
+    setShowPaymentModal(true);
   };
 
   return (
@@ -361,7 +400,7 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
             >
               <div className="flex justify-between items-center mb-2">
                 <span className="font-medium">{ms.name}</span>
-                <Badge variant="secondary">{ms.percentage}% of budget</Badge>
+                <Badge variant="secondary">{ms.percentage}% of budget – ${ms.amount.toFixed(2)}</Badge>
               </div>
               <p className="text-sm text-gray-600 mb-2">{ms.description}</p>
               <div className="flex space-x-2">
@@ -378,9 +417,9 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => approveMilestone(ms.id)}
+                    onClick={() => handlePaymentForMilestone(ms)}
                   >
-                    Approve (Client)
+                    Approve & Pay
                   </Button>
                 )}
                 {ms.paymentReleased && (
@@ -394,12 +433,15 @@ const OnboardingChecklist: React.FC<OnboardingChecklistProps> = ({
 
       <PaymentModal
         isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setSelectedMilestone(null);
+        }}
         onPaymentSuccess={handlePaymentSuccess}
         project={{
-          name: project?.name || 'E-commerce Platform',
-          milestone: 'Project Setup & Planning',
-          amount: 3000
+          name: project?.name || 'Project',
+          milestone: selectedMilestone?.name || 'Project Setup & Planning',
+          amount: selectedMilestone?.amount || 0
         }}
       />
 
